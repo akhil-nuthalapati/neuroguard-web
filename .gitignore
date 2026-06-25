@@ -1,0 +1,27 @@
+# Byte-compiled
+__pycache__/
+*.py[cod]
+
+# Virtual environments
+venv/
+.venv/
+env/
+
+# Environment secrets
+.env
+
+# Data and reports (don't commit user data)
+data/*.db
+reports/*.png
+reports/*.pdf
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+
+# Model (large binary — host separately or use Git LFS)
+# models/face_landmarker.task

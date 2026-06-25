@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>NeuroGuard v2.0 &mdash; Driver Safety Dashboard</title>
+  <meta name="description" content="Real-time AI driver drowsiness monitoring. Works in any browser." />
+  <link rel="stylesheet" href="/static/style.css?v=3" />
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+  <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+</head>
+<body>
+
+<!-- Alert Ticker -->
+<div id="ticker-bar">
+  <div id="ticker-inner">
+    <span class="ticker-item">&#x26A1; NeuroGuard v2.0 &mdash; AI Driver Safety</span>
+    <span class="ticker-item">&#x1F4F9; Click START CAMERA to begin monitoring</span>
+    <span class="ticker-item">&#x1F9E0; EAR &middot; MAR &middot; Head Pose &middot; Gaze &mdash; all in your browser</span>
+    <span class="ticker-item">&#x1F512; Camera frames processed on server &mdash; no video stored</span>
+    <span class="ticker-item">&#x26A1; NeuroGuard v2.0 &mdash; AI Driver Safety</span>
+    <span class="ticker-item">&#x1F4F9; Click START CAMERA to begin monitoring</span>
+    <span class="ticker-item">&#x1F9E0; EAR &middot; MAR &middot; Head Pose &middot; Gaze &mdash; all in your browser</span>
+    <span class="ticker-item">&#x1F512; Camera frames processed on server &mdash; no video stored</span>
+  </div>
+</div>
+
+<!-- Header -->
+<header>
+  <div class="logo">NEUROGUARD <span class="ver">v2.0</span></div>
+  <div id="conn-dot" title="Server connection"></div>
+  <div id="status-badge" class="badge normal">STANDBY</div>
+  <div id="driver-pill">&#x1F464; driver: web_user</div>
+
+  <div class="header-right">
+    <div class="header-stat">
+      <span class="hs-label">FPS</span>
+      <span class="hs-val" id="fps-val">--</span>
+    </div>
+    <div class="header-stat">
+      <span class="hs-label">Session</span>
+      <span class="hs-val" id="session-time">0s</span>
+    </div>
+    <div class="header-stat">
+      <span class="hs-label">Blinks</span>
+      <span class="hs-val" id="hdr-blinks">0</span>
+    </div>
+    <div class="header-stat">
+      <span class="hs-label">Yawns</span>
+      <span class="hs-val" id="hdr-yawns">0</span>
+    </div>
+  </div>
+</header>
+
+<main>
+
+  <!-- LEFT COLUMN -->
+  <div class="video-col">
+
+    <!-- WebRTC Camera Panel -->
+    <div class="video-panel">
+      <div class="panel-title">&#x1F4F9; Live Camera Feed</div>
+
+      <!-- Hidden video + canvas for capture -->
+      <video id="webcam" autoplay playsinline muted style="display:none"></video>
+      <canvas id="capture-canvas" style="display:none"></canvas>
+
+      <!-- Displayed preview canvas -->
+      <canvas id="cam-preview"></canvas>
+
+      <div style="display:flex;gap:0.5rem;margin-top:0.7rem">
+        <button class="cam-btn" id="btn-start" onclick="startCamera()">&#x25B6; START CAMERA</button>
+        <button class="cam-btn secondary" id="btn-stop" onclick="stopCamera()" disabled>&#x25A0; STOP</button>
+      </div>
+      <div id="cam-status" style="font-size:0.65rem;color:var(--muted);margin-top:0.4rem;font-family:'Share Tech Mono',monospace">
+        Camera not started
+      </div>
+    </div>
+
+    <!-- Session Stats -->
+    <div class="panel">
+      <div class="panel-title">&#x1F4CA; Session Statistics</div>
+      <div class="stat-row"><span class="stat-label">Duration</span>      <span class="stat-val" id="st-duration">0s</span></div>
+      <div class="stat-row"><span class="stat-label">Avg Fatigue</span>   <span class="stat-val" id="st-avgfat">0%</span></div>
+      <div class="stat-row"><span class="stat-label">Total Blinks</span>  <span class="stat-val" id="st-blinks">0</span></div>
+      <div class="stat-row"><span class="stat-label">Yawn Count</span>    <span class="stat-val" id="st-yawns">0</span></div>
+      <div class="stat-row"><span class="stat-label">Drowsy Events</span> <span class="stat-val" id="st-drowsy">0</span></div>
+      <div class="stat-row"><span class="stat-label">Alerts Fired</span>  <span class="stat-val" id="st-alerts">0</span></div>
+      <div class="stat-row"><span class="stat-label">Face Detected</span> <span class="stat-val" id="st-face">--</span></div>
+    </div>
+
+    <!-- Alert Log -->
+    <div class="panel log-panel">
+      <div class="panel-title">&#x1F6A8; Alert Log</div>
+      <ul id="alert-log"></ul>
+      <button id="report-btn" onclick="downloadReport()">&#x2B07; Download Session Report</button>
+    </div>
+
+  </div>
+
+  <!-- CENTER TOP: metric cards -->
+  <section class="metrics-grid">
+
+    <div class="card" id="card-ear">
+      <div class="card-icon">&#x1F441;&#xFE0F;</div>
+      <div class="card-label">EAR</div>
+      <div class="card-value" id="val-ear">--</div>
+      <div class="card-sub">Eye Aspect Ratio</div>
+      <div class="card-bar"><div class="card-bar-fill" id="bar-ear" style="width:70%"></div></div>
+    </div>
+
+    <div class="card" id="card-mar">
+      <div class="card-icon">&#x1F444;</div>
+      <div class="card-label">MAR</div>
+      <div class="card-value" id="val-mar">--</div>
+      <div class="card-sub">Mouth Aspect Ratio</div>
+      <div class="card-bar"><div class="card-bar-fill" id="bar-mar" style="width:30%;background:var(--accent2)"></div></div>
+    </div>
+
+    <div class="card" id="card-pitch">
+      <div class="card-icon">&#x1F9ED;</div>
+      <div class="card-label">PITCH</div>
+      <div class="card-value" id="val-pitch">--&deg;</div>
+      <div class="card-sub">Head Tilt</div>
+      <div class="card-bar"><div class="card-bar-fill" id="bar-pitch" style="width:15%;background:var(--accent3)"></div></div>
+    </div>
+
+    <div class="card" id="card-blink">
+      <div class="card-icon">&#x26A1;</div>
+      <div class="card-label">BLINK RATE</div>
+      <div class="card-value" id="val-blink">--</div>
+      <div class="card-sub">blinks / min</div>
+      <div class="card-bar"><div class="card-bar-fill" id="bar-blink" style="width:60%"></div></div>
+    </div>
+
+    <div class="card" id="card-yawn">
+      <div class="card-icon">&#x1F971;</div>
+      <div class="card-label">YAWNS</div>
+      <div class="card-value" id="val-yawn">--</div>
+      <div class="card-sub">Total yawns</div>
+      <div class="card-bar"><div class="card-bar-fill" id="bar-yawn" style="width:0%;background:var(--warn)"></div></div>
+    </div>
+
+    <div class="card" id="card-attn">
+      <div class="card-icon">&#x1F3AF;</div>
+      <div class="card-label">ATTENTION</div>
+      <div class="card-value" id="val-attn">--</div>
+      <div class="card-sub">Score 0 &ndash; 1</div>
+      <div class="card-bar"><div class="card-bar-fill" id="bar-attn" style="width:80%"></div></div>
+    </div>
+
+  </section>
+
+  <!-- CENTER BOTTOM: charts -->
+  <div class="charts-col">
+    <div class="panel chart-panel">
+      <div class="panel-title">&#x1F4C8; Fatigue Timeline</div>
+      <canvas id="fatigueChart"></canvas>
+    </div>
+    <div class="chart-row">
+      <div class="panel chart-panel">
+        <div class="panel-title">&#x1F3AF; Attention Score</div>
+        <canvas id="attentionChart"></canvas>
+      </div>
+      <div class="panel chart-panel">
+        <div class="panel-title">&#x1F441; Blink Rate</div>
+        <canvas id="blinkChart"></canvas>
+      </div>
+    </div>
+  </div>
+
+  <!-- RIGHT COLUMN -->
+  <div class="right-col">
+
+    <div class="panel gauge-panel">
+      <div class="panel-title">&#x1F9E0; Fatigue Score</div>
+      <div class="gauge-wrap">
+        <svg id="gauge-svg" viewBox="0 0 180 180">
+          <circle id="gauge-track" cx="90" cy="90" r="80" />
+          <circle id="gauge-fill"  cx="90" cy="90" r="80" />
+        </svg>
+        <div class="gauge-center">
+          <div id="gauge-pct">0%</div>
+          <div id="gauge-label">FATIGUE</div>
+        </div>
+      </div>
+      <div class="gauge-zones">
+        <span style="color:var(--accent)">0 Normal</span>
+        <span style="color:var(--warn)">55 Warn</span>
+        <span style="color:var(--critical)">75 Crit</span>
+      </div>
+    </div>
+
+    <div class="panel gaze-panel">
+      <div class="panel-title">&#x1F441; Gaze Tracker</div>
+      <canvas id="gazeCanvas" width="200" height="200"></canvas>
+      <div style="margin-top:0.5rem;font-size:0.65rem;color:var(--muted);text-align:center">
+        X: <span id="gaze-x" style="color:var(--accent2)">--</span>
+        &nbsp;&nbsp;Y: <span id="gaze-y" style="color:var(--accent2)">--</span>
+        &nbsp;&nbsp;<span id="gaze-status" style="color:var(--accent)">centered</span>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-title">&#x23F1; Fatigue Prediction</div>
+      <div class="stat-row"><span class="stat-label">Est. time to fatigue</span><span class="stat-val" id="pred-time">--</span></div>
+      <div class="stat-row"><span class="stat-label">Confidence</span><span class="stat-val" id="pred-conf">--</span></div>
+      <div style="margin-top:0.7rem;font-size:0.68rem;color:var(--muted);line-height:1.5" id="pred-rec">Start camera to begin...</div>
+    </div>
+
+  </div>
+
+</main>
+
+<script src="/static/dashboard.js?v=3"></script>
+</body>
+</html>
