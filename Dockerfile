@@ -1,37 +1,36 @@
 FROM python:3.11-slim
 
-# System deps for OpenCV headless + MediaPipe (needs EGL/GLES even headless)
+# All system deps MediaPipe + OpenCV need (force fresh layer)
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    libgl1 \
+    libgl1-mesa-glx \
+    libgl1-mesa-dri \
     libglib2.0-0 \
     libgomp1 \
-    libgles2 \
-    libegl1 \
-    libglvnd0 \
-    libglx0 \
-    mesa-utils \
-    libgl1-mesa-glx \
+    libgles2-mesa \
+    libegl1-mesa \
+    libgbm1 \
+    mesa-vulkan-drivers \
     && rm -rf /var/lib/apt/lists/*
+
+# Force software rendering so MediaPipe works without GPU/display
+ENV LIBGL_ALWAYS_SOFTWARE=1
+ENV MESA_GL_VERSION_OVERRIDE=4.5
+ENV GALLIUM_DRIVER=softpipe
+ENV MEDIAPIPE_DISABLE_GPU=1
+ENV DISPLAY=:0
 
 WORKDIR /app
 
-# Install Python deps first (layer cache)
+# Install Python deps
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy app code
+# Copy app
 COPY . .
 
-# Create writable directories
+# Writable dirs
 RUN mkdir -p data reports
 
-# Force software rendering — MediaPipe needs this in headless Docker
-ENV DISPLAY=:99
-ENV MESA_GL_VERSION_OVERRIDE=3.3
-ENV LIBGL_ALWAYS_SOFTWARE=1
-ENV MEDIAPIPE_DISABLE_GPU=1
-
-# Expose port
 EXPOSE 8080
 
 CMD ["python", "app.py"]
