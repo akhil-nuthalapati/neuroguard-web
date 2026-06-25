@@ -6,10 +6,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libgl1-mesa-dri \
     libglib2.0-0 \
     libgomp1 \
-    libgles2-mesa \
-    libegl1-mesa \
+    libgles2 \
+    libegl1 \
     libgbm1 \
-    mesa-vulkan-drivers \
     && rm -rf /var/lib/apt/lists/*
 
 # Force software rendering so MediaPipe works without GPU/display
