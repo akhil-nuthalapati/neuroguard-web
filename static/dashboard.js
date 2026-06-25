@@ -129,44 +129,40 @@ async function captureAndSend() {
     // Don't send if canvas returned empty/default image
     if (frameB64.length < 1000) return;
 
-    const res = await fetch("/api/process_frame", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        frame:      frameB64,
-        session_id: SESSION_ID,
-        driver_id:  "web_user",
-      }),
+    // Send frame via WebSocket instead of HTTP POST for much higher FPS
+    socket.emit("process_frame", {
+      frame:      frameB64,
+      session_id: SESSION_ID,
+      driver_id:  "web_user",
+    }, (res) => {
+      // Callback when server processes the frame
+      if (res && !res.error) {
+        updateDashboard(res);
+        _fpsCount++;
+        _errCount = 0;
+        const status = document.getElementById("cam-status");
+        if (status) {
+          status.textContent = res.face_detected
+            ? "Face detected — monitoring at " + vw + "x" + vh
+            : "Camera active — waiting for face...";
+          status.style.color = res.face_detected ? "var(--accent)" : "var(--warn)";
+        }
+      } else {
+        _errCount++;
+        if (_errCount > 5 && res) {
+          document.getElementById("cam-status").textContent = "Server error: " + (res.error || "Unknown");
+          document.getElementById("cam-status").style.color = "var(--critical)";
+        }
+      }
+      _sending = false;
     });
 
-    if (res.ok) {
-      const m = await res.json();
-      updateDashboard(m);
-      _fpsCount++;
-      _errCount = 0;
-      // Update face status text
-      const status = document.getElementById("cam-status");
-      if (status) {
-        status.textContent = m.face_detected
-          ? "Face detected — monitoring at " + vw + "x" + vh
-          : "Camera active — waiting for face...";
-        status.style.color = m.face_detected ? "var(--accent)" : "var(--warn)";
-      }
-    } else {
-      _errCount++;
-      if (_errCount > 5) {
-        const txt = await res.text();
-        document.getElementById("cam-status").textContent = "Server error: " + txt.slice(0, 60);
-        document.getElementById("cam-status").style.color = "var(--critical)";
-      }
-    }
   } catch (e) {
     _errCount++;
     if (_errCount === 3) {
       document.getElementById("cam-status").textContent = "Connection error — retrying...";
       document.getElementById("cam-status").style.color = "var(--warn)";
     }
-  } finally {
     _sending = false;
   }
 }
