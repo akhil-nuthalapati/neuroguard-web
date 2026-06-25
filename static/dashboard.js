@@ -30,27 +30,42 @@ const preCtx  = preview.getContext("2d");
 async function startCamera() {
   try {
     _stream = await navigator.mediaDevices.getUserMedia({
-      video: { width: 640, height: 480, facingMode: "user" },
+      video: { width: { ideal: 640 }, height: { ideal: 480 }, facingMode: "user" },
       audio: false,
     });
+
     video.srcObject = _stream;
+
+    // Wait for video metadata so we know actual dimensions
+    await new Promise((resolve, reject) => {
+      video.onloadedmetadata = resolve;
+      video.onerror = reject;
+      setTimeout(reject, 8000); // 8s timeout
+    });
+
     await video.play();
 
-    // Size canvases
-    capCvs.width  = preview.width  = 640;
-    capCvs.height = preview.height = 480;
+    const vw = video.videoWidth  || 640;
+    const vh = video.videoHeight || 480;
+
+    // Set canvas dimensions properly as attributes
+    capCvs.width  = vw;
+    capCvs.height = vh;
+    preview.width  = vw;
+    preview.height = vh;
     preview.style.width  = "100%";
+    preview.style.height = "auto";
     preview.style.borderRadius = "8px";
 
     _active = true;
     document.getElementById("btn-start").disabled = true;
     document.getElementById("btn-stop").disabled  = false;
-    document.getElementById("cam-status").textContent = "Camera active — monitoring...";
+    document.getElementById("cam-status").textContent = "Camera active — monitoring at " + vw + "x" + vh;
     document.getElementById("cam-status").style.color = "var(--accent)";
     document.getElementById("status-badge").textContent = "ACTIVE";
     document.getElementById("status-badge").className = "badge normal";
 
-    // Capture frames at ~10 fps
+    // Capture frames at 10 fps
     _captureInterval = setInterval(captureAndSend, 100);
     _fpsInterval     = setInterval(() => { _fpsVal = _fpsCount; _fpsCount = 0; }, 1000);
 
@@ -82,23 +97,37 @@ function stopCamera() {
 }
 
 let _sending = false;
+let _errCount = 0;
 
 async function captureAndSend() {
-  if (!_active || _sending || video.readyState < 2) return;
+  if (!_active || _sending) return;
+
+  // Need HAVE_ENOUGH_DATA (4) — not just HAVE_CURRENT_DATA (2)
+  if (video.readyState < 4 || video.videoWidth === 0) return;
+
   _sending = true;
 
   try {
-    // Draw to hidden canvas, then to visible preview (mirrored)
-    capCtx.drawImage(video, 0, 0, 640, 480);
+    const vw = video.videoWidth;
+    const vh = video.videoHeight;
 
-    // Mirror the preview
+    // Draw to capture canvas
+    capCtx.drawImage(video, 0, 0, vw, vh);
+
+    // Draw mirrored preview
     preCtx.save();
-    preCtx.translate(640, 0);
+    preCtx.translate(vw, 0);
     preCtx.scale(-1, 1);
-    preCtx.drawImage(video, 0, 0, 640, 480);
+    preCtx.drawImage(video, 0, 0, vw, vh);
     preCtx.restore();
 
+    // Validate canvas has real content (non-zero size)
+    if (capCvs.width === 0 || capCvs.height === 0) return;
+
     const frameB64 = capCvs.toDataURL("image/jpeg", 0.7);
+
+    // Don't send if canvas returned empty/default image
+    if (frameB64.length < 1000) return;
 
     const res = await fetch("/api/process_frame", {
       method: "POST",
@@ -114,9 +143,29 @@ async function captureAndSend() {
       const m = await res.json();
       updateDashboard(m);
       _fpsCount++;
+      _errCount = 0;
+      // Update face status text
+      const status = document.getElementById("cam-status");
+      if (status) {
+        status.textContent = m.face_detected
+          ? "Face detected — monitoring at " + vw + "x" + vh
+          : "Camera active — waiting for face...";
+        status.style.color = m.face_detected ? "var(--accent)" : "var(--warn)";
+      }
+    } else {
+      _errCount++;
+      if (_errCount > 5) {
+        const txt = await res.text();
+        document.getElementById("cam-status").textContent = "Server error: " + txt.slice(0, 60);
+        document.getElementById("cam-status").style.color = "var(--critical)";
+      }
     }
   } catch (e) {
-    // network error — silent, will retry
+    _errCount++;
+    if (_errCount === 3) {
+      document.getElementById("cam-status").textContent = "Connection error — retrying...";
+      document.getElementById("cam-status").style.color = "var(--warn)";
+    }
   } finally {
     _sending = false;
   }
