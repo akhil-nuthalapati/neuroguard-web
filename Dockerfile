@@ -21,8 +21,4 @@ RUN mkdir -p data reports
 EXPOSE 8080
 
 # Run with gunicorn + eventlet for WebSocket support
-CMD gunicorn --worker-class eventlet -w 1 \
-    --bind 0.0.0.0:${PORT:-8080} \
-    --timeout 120 \
-    --log-level info \
-    app:app
+CMD ["python", "app.py"]
