@@ -114,6 +114,16 @@ def index():
     return render_template("dashboard.html")
 
 
+def _clean_dict(d: dict) -> dict:
+    for k, v in d.items():
+        if isinstance(v, (np.bool_, bool)):
+            d[k] = bool(v)
+        elif isinstance(v, (np.float32, np.float64, float)):
+            d[k] = float(v)
+        elif isinstance(v, (np.int32, np.int64, int)):
+            d[k] = int(v)
+    return d
+
 @app.route("/api/process_frame", methods=["POST"])
 def process_frame():
     """
@@ -206,6 +216,7 @@ def process_frame():
     except Exception as e:
         metrics["error"] = str(e)
 
+    metrics = _clean_dict(metrics)
     # Broadcast to all connected dashboard tabs
     socketio.emit("metrics", metrics)
     return jsonify(metrics)
@@ -325,6 +336,7 @@ def on_process_frame(data):
     except Exception as e:
         metrics["error"] = str(e)
 
+    metrics = _clean_dict(metrics)
     # Return directly to the callback
     return metrics
 
